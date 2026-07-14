@@ -1919,3 +1919,123 @@ Checked against `FINAL_TEAM_BUILD_GUIDE.md`:
 5. Whether `GET /events/:id` includes `rejectionReason`.
 6. Exact field set returned by `GET /events/:id/registrations`.
 7. Whether `POST /clubs` maps a `facultyCoordinatorId` conflict to `400` or `409` (this contract assumes `409`, consistent with the same conflict elsewhere).
+
+
+
+# 6. Finalized API Decisions
+
+The following decisions are **final** and override every corresponding **Needs confirmation** note in this document, including the matching entries in Section 5's "Open items requiring team confirmation" list. Where a shape below differs from an earlier example in this file, the shape below is authoritative.
+
+## 6.1 `clubMemberships[]` — Auth Responses
+
+**Overrides:** the **Needs confirmation** note under `AuthUser`; resolves Section 5 open item 1.
+
+`clubMemberships[]` is returned **only** by `GET /auth/me`. `POST /auth/register` and `POST /auth/login` return the base `AuthUser` object with no `clubMemberships` field at all — not even an empty array.
+
+```json
+{ "id": "uuid", "name": "Asha Rao", "email": "asha@example.edu", "platformRole": "STUDENT" }
+```
+
+`GET /auth/me` is unchanged: it returns this same object plus `clubMemberships[]`, as already documented under `AuthUser`.
+
+## 6.2 `ClubMembership.department` — Final Shape
+
+**Overrides:** the **Needs confirmation** note under `ClubMembership`; resolves Section 5 open item 2.
+
+`department` is finalized as `id` + `name` only. `head` is dropped.
+
+```json
+{
+  "clubId": "uuid",
+  "clubName": "Robotics Club",
+  "role": "CLUB_HEAD",
+  "department": {
+    "id": "uuid",
+    "name": "Web Dev"
+  }
+}
+```
+
+`department` remains `null` when the membership isn't tied to a specific department.
+
+**Note:** the earlier draft included `head.id` specifically to support client-side Department Head derivation (*"a club membership whose department has `head.id === user.id`"*). With `head` removed, that derivation can no longer happen from this object — the frontend will need another source (e.g. comparing against `Department.headUserId` from a `GET /departments/:id` call) if that behavior is still required.
+
+## 6.3 `Club.socialLinks` — Supported Keys
+
+**Overrides:** the **Needs confirmation** note under `Club`; resolves Section 5 open item 3.
+
+```json
+{
+  "instagram": "https://instagram.com/...",
+  "linkedin": "https://...",
+  "github": "https://...",
+  "website": "https://..."
+}
+```
+
+These four keys are the complete, final set. `youtube` and any other platform key are not supported and should be rejected or ignored server-side. Each value must still match `https?://`, per the existing validation rule.
+
+## 6.4 Event Registered-Count Field Name
+
+**Confirms:** `registeredCount` as final (no rename); resolves Section 5 open item 4.
+
+```json
+{ "registeredCount": 12 }
+```
+
+This name is now locked in everywhere it already appears in this contract — `EventSummary`, `GET /events` list results, `GET /events/:id` detail, and Search results. `registrationCount`, `currentRegistrations`, and `totalRegistrations` are rejected alternatives.
+
+## 6.5 `rejectionReason` on `GET /events/:id`
+
+**Overrides:** the **Needs confirmation** note under `Event`; resolves Section 5 open item 5.
+
+`GET /events/:id` (detail) returns EventSummary plus `requestedBy`, `reviewedBy`, and `rejectionReason`:
+
+```json
+{
+  "requestedBy": "uuid",
+  "reviewedBy": "uuid | null",
+  "rejectionReason": "string | null"
+}
+```
+
+`rejectionReason` is `null` unless `status` is `REJECTED`.
+
+## 6.6 `GET /events/:id/registrations` — Final Shape
+
+**Overrides:** the **Needs confirmation** note under `EventRegistrant`; resolves Section 5 open item 6.
+
+```json
+{
+  "userId": "uuid",
+  "name": "Asha Rao",
+  "email": "asha@example.edu",
+  "registeredAt": "2026-01-10T09:00:00Z"
+}
+```
+
+`department` and `phone` are explicitly excluded — not returned by this endpoint.
+
+## 6.7 Faculty Coordinator Conflict — Status Code
+
+**Confirms:** `409` as final for `POST /clubs`; resolves Section 5 open item 7.
+
+When the submitted `facultyCoordinatorId` already coordinates another club, `POST /clubs` returns `409 Conflict`, consistent with the identical check on `POST /club-requests/:id/approve`.
+
+```
+409   facultyCoordinatorId already coordinates another club
+```
+
+## Summary
+
+| # | Item | Final Decision |
+|---|---|---|
+| 1 | `clubMemberships[]` in auth responses | `GET /auth/me` only |
+| 2 | `ClubMembership.department` shape | `{ id, name }` — `head` removed |
+| 3 | `Club.socialLinks` keys | `instagram`, `linkedin`, `github`, `website` |
+| 4 | Event registered-count field name | `registeredCount` |
+| 5 | `rejectionReason` on `GET /events/:id` | Included |
+| 6 | `GET /events/:id/registrations` shape | `{ userId, name, email, registeredAt }` |
+| 7 | Faculty coordinator conflict status code | `409 Conflict` |
+
+All seven items in Section 5's "Open items requiring team confirmation" list are now closed by this section.

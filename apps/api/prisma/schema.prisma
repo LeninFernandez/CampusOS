@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum PlatformRole {
+  SUPER_ADMIN
+  FACULTY_COORDINATOR
+  STUDENT
+}
+
+enum ClubRole {
+  CLUB_HEAD
+  MEMBER
+}
+
+enum ClubStatus {
+  ACTIVE
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EventType {
+  PUBLIC
+  CLUB_EXCLUSIVE
+}
+
+enum EventStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProjectStatus {
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
+
+enum AnnouncementVisibility {
+  GLOBAL
+  CLUB
+  DEPARTMENT
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String       @db.VarChar(80)
+  email        String       @unique @db.VarChar(255)
+  passwordHash String       @db.VarChar(255) @map("password_hash")
+  platformRole PlatformRole @default(STUDENT) @map("platform_role")
+  createdAt    DateTime     @default(now()) @db.Timestamp(6) @map("created_at")
+  updatedAt    DateTime     @updatedAt @db.Timestamp(6) @map("updated_at")
+
+  // Relations
+  clubRequests          ClubCreationRequest[]
+  reviewedRequests      ClubCreationRequest[]  @relation("ReviewedBy")
+  clubMemberships       ClubMembership[]
+  departmentMemberships DepartmentMembership[]
+  headedDepartments     Department[]
+  coordinatedClub       Club?
+  requestedEvents       Event[]                @relation("RequestedBy")
+  reviewedEvents        Event[]                @relation("ReviewedBy")
+  eventRegistrations    EventRegistration[]
+  projects              Project[]
+  blogs                 Blog[]
+  announcements         Announcement[]
+
+  @@map("users")
+}
+
+model ClubCreationRequest {
+  id              String        @id @default(uuid()) @db.Uuid
+  clubName        String        @db.VarChar(100) @map("club_name")
+  description     String        @db.Text
+  facultyDetails  String        @db.Text @map("faculty_details")
+  reason          String        @db.Text
+  requestedById   String        @db.Uuid @map("requested_by")
+  status          RequestStatus @default(PENDING)
+  reviewedById    String?       @db.Uuid @map("reviewed_by")
+  rejectionReason String?       @db.Text @map("rejection_reason")
+  createdAt       DateTime      @default(now()) @db.Timestamp(6) @map("created_at")
+  updatedAt       DateTime      @updatedAt @db.Timestamp(6) @map("updated_at")
+
+  // Relations
+  requestedBy User  @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewedBy  User? @relation("ReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([requestedById])
+  @@map("club_creation_requests")
+}
+
+model Club {
+  id                   String     @id @default(uuid()) @db.Uuid
+  name                 String     @db.VarChar(100)
+  description          String     @db.Text
+  facultyDetails       String     @db.Text @map("faculty_details")
+  socialLinks          Json?      @db.JsonB @map("social_links")
+  logoUrl              String?    @db.VarChar(500) @map("logo_url")
+  status               ClubStatus @default(ACTIVE)
+  facultyCoordinatorId String?    @unique @db.Uuid @map("faculty_coordinator_id")
+  createdAt            DateTime   @default(now()) @db.Timestamp(6) @map("created_at")
+  updatedAt            DateTime   @updatedAt @db.Timestamp(6) @map("updated_at")
+
+  // Relations
+  facultyCoordinator User?          @relation(fields: [facultyCoordinatorId], references: [id], onDelete: SetNull)
+  memberships        ClubMembership[]
+  departments        Department[]
+  events             Event[]
+  projects           Project[]
+  blogs              Blog[]
+  announcements      Announcement[]
+
+  @@index([name])
+  @@map("clubs")
+}
+
+model ClubMembership {
+  id       String   @id @default(uuid()) @db.Uuid
+  userId   String   @db.Uuid @map("user_id")
+  clubId   String   @db.Uuid @map("club_id")
+  role     ClubRole @default(MEMBER)
+  joinedAt DateTime @default(now()) @db.Timestamp(6) @map("joined_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clubId])
+  @@index([clubId])
+  @@index([userId])
+  @@index([clubId, role])
+  @@map("club_memberships")
+}
+
+model Department {
+  id        String   @id @default(uuid()) @db.Uuid
+  clubId    String   @db.Uuid @map("club_id")
+  name      String   @db.VarChar(50)
+  headUserId String? @db.Uuid @map("head_user_id")
+  createdAt DateTime @default(now()) @db.Timestamp(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamp(6) @map("updated_at")
+
+  // Relations
+  club         Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  head         User?                  @relation(fields: [headUserId], references: [id], onDelete: SetNull)
+  memberships  DepartmentMembership[]
+  projects     Project[]
+  blogs        Blog[]
+  announcements Announcement[]
+
+  @@index([clubId])
+  @@index([headUserId])
+  @@map("departments")
+}
+
+model DepartmentMembership {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid @map("user_id")
+  departmentId String   @db.Uuid @map("department_id")
+  joinedAt     DateTime @default(now()) @db.Timestamp(6) @map("joined_at")
+
+  // Relations
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, departmentId])
+  @@index([departmentId])
+  @@index([userId])
+  @@map("department_memberships")
+}
+
+model Event {
+  id              String      @id @default(uuid()) @db.Uuid
+  clubId          String      @db.Uuid @map("club_id")
+  title           String      @db.VarChar(200)
+  description     String      @db.Text
+  location        String      @db.VarChar(200)
+  type            EventType
+  capacity        Int?
+  startTime       DateTime    @db.Timestamp(6) @map("start_time")
+  endTime         DateTime    @db.Timestamp(6) @map("end_time")
+  status          EventStatus @default(PENDING)
+  requestedById   String      @db.Uuid @map("requested_by")
+  reviewedById    String?     @db.Uuid @map("reviewed_by")
+  rejectionReason String?     @db.Text @map("rejection_reason")
+  createdAt       DateTime    @default(now()) @db.Timestamp(6) @map("created_at")
+  updatedAt       DateTime    @updatedAt @db.Timestamp(6) @map("updated_at")
+
+  // Relations
+  club          Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  requestedBy   User                @relation("RequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewedBy    User?               @relation("ReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  registrations EventRegistration[]
+
+  @@index([clubId])
+  @@index([status])
+  @@index([type])
+  @@index([startTime])
+  @@index([status, type])
+  @@map("events")
+}
+
+model EventRegistration {
+  id           String   @id @default(uuid()) @db.Uuid
+  eventId      String   @db.Uuid @map("event_id")
+  userId       String   @db.Uuid @map("user_id")
+  registeredAt DateTime @default(now()) @db.Timestamp(6) @map("registered_at")
+
+  // Relations
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+  @@map("event_registrations")
+}
+
+model Project {
+  id           String        @id @default(uuid()) @db.Uuid
+  clubId       String        @db.Uuid @map("club_id")
+  departmentId String?       @db.Uuid @map("department_id")
+  title        String        @db.VarChar(200)
+  description  String        @db.Text
+  techStack    String[]      @map("tech_stack")
+  githubLink   String?       @db.VarChar(500) @map("github_link")
+  demoLink     String?       @db.VarChar(500) @map("demo_link")
+  thumbnailUrl String?       @db.VarChar(500) @map("thumbnail_url")
+  contributors String[]
+  status       ProjectStatus @default(IN_PROGRESS)
+  createdById  String        @db.Uuid @map("created_by")
+  createdAt    DateTime      @default(now()) @db.Timestamp(6) @map("created_at")
+  updatedAt    DateTime      @updatedAt @db.Timestamp(6) @map("updated_at")
+
+  // Relations
+  club       Club        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  createdBy  User        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([clubId])
+  @@index([departmentId])
+  @@index([status])
+  @@index([createdById])
+  @@map("projects")
+}
+
+model Blog {
+  id           String   @id @default(uuid()) @db.Uuid
+  clubId       String?  @db.Uuid @map("club_id")
+  departmentId String?  @db.Uuid @map("department_id")
+  title        String   @db.VarChar(200)
+  content      String   @db.Text
+  authorId     String   @db.Uuid @map("author_id")
+  tags         String[]
+  thumbnailUrl String?  @db.VarChar(500) @map("thumbnail_url")
+  publishedAt  DateTime @default(now()) @db.Timestamp(6) @map("published_at")
+  createdAt    DateTime @default(now()) @db.Timestamp(6) @map("created_at")
+  updatedAt    DateTime @updatedAt @db.Timestamp(6) @map("updated_at")
+
+  // Relations
+  club       Club?       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  author     User        @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([clubId])
+  @@index([departmentId])
+  @@index([authorId])
+  @@index([publishedAt(sort: Desc)])
+  @@map("blogs")
+}
+
+model Announcement {
+  id           String                 @id @default(uuid()) @db.Uuid
+  title        String                 @db.VarChar(200)
+  content      String                 @db.Text
+  visibility   AnnouncementVisibility
+  clubId       String?                @db.Uuid @map("club_id")
+  departmentId String?                @db.Uuid @map("department_id")
+  createdById  String                 @db.Uuid @map("created_by")
+  createdAt    DateTime               @default(now()) @db.Timestamp(6) @map("created_at")
+
+  // Relations
+  club       Club?       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdBy  User        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([visibility])
+  @@index([clubId])
+  @@index([departmentId])
+  @@index([createdById])
+  @@index([createdAt(sort: Desc)])
+  @@map("announcements")
+}
